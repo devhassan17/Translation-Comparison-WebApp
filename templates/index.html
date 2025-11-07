@@ -1,0 +1,33 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Translation Checker (MVP)</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <main class="container">
+    <h1>Translation Checker (MVP)</h1>
+    <p class="muted">Upload original & translation files (TXT/DOCX). Optional: Glossary CSV with columns <code>term,preferred_translation</code>.</p>
+
+    <form id="upload" enctype="multipart/form-data">
+      <div class="row">
+        <label>Original: <input type="file" name="original" required></label>
+      </div>
+      <div class="row">
+        <label>Translation: <input type="file" name="translation" required></label>
+      </div>
+      <div class="row">
+        <label>Glossary (CSV, optional): <input type="file" name="glossary"></label>
+      </div>
+      <button type="submit">Analyze</button>
+    </form>
+
+    <section id="summary"></section>
+    <section id="issues"></section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

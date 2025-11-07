@@ -1,0 +1,35 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Report</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <main class="container">
+    <h1>Run Report</h1>
+    <div class="card">
+      <h2>Summary</h2>
+      <ul>
+        <li>Segments: {{data.summary.segments}}</li>
+        <li>High: {{data.summary.high}}</li>
+        <li>Medium: {{data.summary.medium}}</li>
+        <li>Low: {{data.summary.low}}</li>
+      </ul>
+    </div>
+
+    <h2>Issues</h2>
+    {% for it in data.issues %}
+      <div class="card {{it.severity}}">
+        <div><strong>[{{it.severity|upper}}] {{it.type}}</strong> — Segment {{it.segment}}</div>
+        <div><em>Source:</em> {{it.src}}</div>
+        <div><em>Target:</em> {{it.tgt}}</div>
+        {% if it.detail %}
+        <pre>{{it.detail | tojson(indent=2)}}</pre>
+        {% endif %}
+      </div>
+    {% endfor %}
+  </main>
+</body>
+</html>

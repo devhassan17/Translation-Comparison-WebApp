@@ -1,0 +1,15 @@
+*{box-sizing:border-box} body{font-family:system-ui,Arial,sans-serif;margin:0;background:#0b1220;color:#e8eefc}
+.container{max-width:980px;margin:40px auto;padding:0 16px}
+h1{font-size:28px;margin-bottom:8px}
+h2{font-size:20px;margin:16px 0 8px}
+.muted{color:#9fb0d8}
+form .row{margin:10px 0}
+input[type=file]{display:block;margin-top:6px}
+button{background:#2f6feb;color:white;border:0;padding:10px 14px;border-radius:10px;cursor:pointer}
+button:hover{opacity:.95}
+.card{background:#121a2b;border:1px solid #1d2740;border-radius:12px;padding:14px;margin:10px 0;box-shadow:0 3px 10px rgba(0,0,0,.2)}
+.card.high{border-left:4px solid #ff5555}
+.card.medium{border-left:4px solid #f6c343}
+.card.low{border-left:4px solid #4bdbaa}
+a{color:#7bb1ff}
+pre{white-space:pre-wrap;word-break:break-word;background:#0d1424;border-radius:8px;padding:8px}

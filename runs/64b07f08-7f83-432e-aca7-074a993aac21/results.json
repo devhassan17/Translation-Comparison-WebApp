@@ -1,0 +1,49 @@
+{
+  "summary": {
+    "high": 2,
+    "medium": 1,
+    "low": 0,
+    "segments": 4
+  },
+  "issues": [
+    {
+      "type": "number_mismatch",
+      "severity": "high",
+      "segment": 1,
+      "src": "Purchase Order PO-3119\nAmount due: EUR 7,830.75 on December 15, 2025.",
+      "tgt": "أمر شراء PO-3119\nالمبلغ المستحق: 7.830,75 EUR في 15 ديسمبر 2025.",
+      "detail": {
+        "src": [
+          "3119",
+          "7830.75"
+        ],
+        "tgt": [
+          "3119",
+          "7830.75",
+          "15",
+          "2025"
+        ]
+      }
+    },
+    {
+      "type": "date_mismatch",
+      "severity": "high",
+      "segment": 1,
+      "src": "Purchase Order PO-3119\nAmount due: EUR 7,830.75 on December 15, 2025.",
+      "tgt": "أمر شراء PO-3119\nالمبلغ المستحق: 7.830,75 EUR في 15 ديسمبر 2025.",
+      "detail": {
+        "src": [
+          "December 15, 2025"
+        ],
+        "tgt": []
+      }
+    },
+    {
+      "type": "possibly_untranslated",
+      "severity": "medium",
+      "segment": 4,
+      "src": "Please translate every line into Arabic.",
+      "tgt": "Please translate every line into Arabic."
+    }
+  ]
+}

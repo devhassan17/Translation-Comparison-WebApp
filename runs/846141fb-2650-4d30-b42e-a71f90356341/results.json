@@ -1,0 +1,17 @@
+{
+  "summary": {
+    "high": 0,
+    "medium": 0,
+    "low": 1,
+    "segments": 4
+  },
+  "issues": [
+    {
+      "type": "orthography_extra_spaces",
+      "severity": "low",
+      "segment": 2,
+      "src": "Contact Mary-Jane O'Connor at IBM for assistance.",
+      "tgt": "Contactez Mary Jane O’Conor chez IBM  pour obtenir de l'aide."
+    }
+  ]
+}
