@@ -1,8 +1,17 @@
 # services/checks.py
-# v2.1 — locale-aware numbers/dates + refined name-typo heuristic
+# v2.2 — locale-aware numbers/dates (Arabic months + Arabic/Persian digits) + refined name-typo heuristic
 
 import regex as re
 from rapidfuzz import fuzz
+
+# ---------- Digit normalization ----------
+# Map Arabic-Indic ٠١٢٣٤٥٦٧٨٩ and Persian ۰۱۲۳۴۵۶۷۸۹ -> ASCII 0-9
+_ARABIC_INDIC = dict(zip("٠١٢٣٤٥٦٧٨٩", "0123456789"))
+_PERSIAN = dict(zip("۰۱۲۳۴۵۶۷۸۹", "0123456789"))
+_DIGIT_MAP = str.maketrans({**_ARABIC_INDIC, **_PERSIAN})
+
+def normalize_digits(text: str) -> str:
+    return (text or "").translate(_DIGIT_MAP)
 
 # ---------- Regexes ----------
 NUM_RE = re.compile(r"""
@@ -16,13 +25,18 @@ NUM_RE = re.compile(r"""
     (?!\w)
 """, re.X)
 
-DATE_RE = re.compile(r"""
+# English month names
+EN_DATE_RE = re.compile(r"""
     \b(
         \d{1,2}[/\-]\d{1,2}[/\-]\d{2,4}     # 12/10/2025 or 12-10-2025
         | (?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\w*
           \s+\d{1,2},?\s+\d{2,4}            # Dec 10, 2025
     )\b
 """, re.I | re.X)
+
+# Arabic month names (with common spelling variants)
+AR_MONTHS = r"(يناير|فبراير|مارس|أبريل|ابريل|إبريل|مايو|يونيو|يوليو|أغسطس|اغسطس|سبتمبر|أكتوبر|اكتوبر|نوفمبر|ديسمبر)"
+AR_DATE_RE = re.compile(rf"\b(\d{{1,2}})\s+{AR_MONTHS}\s+\d{{2,4}}\b")
 
 EXTRA_SPACE_RE = re.compile(r'\s{2,}')
 DOUBLE_PUNCT_RE = re.compile(r'([!?.,:;])\1+')
@@ -33,7 +47,7 @@ ALLCAPS = re.compile(r"^\p{Lu}{2,}$")        # Acronyms: IBM, USA
 NAME_STOPWORDS = {
     # English
     "Contact", "Dear", "Attention", "Attn", "Mr", "Mrs", "Ms",
-    # Common openers in a few locales (extend as needed)
+    # Some common openers (extend as needed)
     "Contacto", "Estimado", "Estimados", "Estimada", "Bonjour", "Caro", "Cara",
 }
 
@@ -44,7 +58,7 @@ def _normalize_amount(s: str) -> str:
     Heuristic: the rightmost separator among . or , is the decimal mark.
     Currency markers are stripped first.
     """
-    s = (s or "").strip().replace('\u00A0', ' ')
+    s = normalize_digits(s).strip().replace('\u00A0', ' ')
     s = re.sub(r'(USD|EUR|GBP|PKR|\$|€|£)\s*', '', s, flags=re.I)
     s2 = re.sub(r'[^0-9.,]', '', s)
     if not s2:
@@ -58,17 +72,30 @@ def _normalize_amount(s: str) -> str:
     dec_part = re.sub(r'[.,\s]', '', s2[dec_idx+1:])
     return f"{int_part}.{dec_part}"
 
+def _find_dates(text_norm: str):
+    """Return list of date strings and their spans from normalized text."""
+    dates, spans = [], []
+    # English-style & numeric
+    for m in EN_DATE_RE.finditer(text_norm):
+        dates.append(m.group(0))
+        spans.append((m.start(), m.end()))
+    # Arabic month names (digits already normalized)
+    for m in AR_DATE_RE.finditer(text_norm):
+        dates.append(m.group(0))
+        spans.append((m.start(), m.end()))
+    return dates, spans
+
 def extract_numbers_dates(text):
     """
     Extract normalized numbers and raw date strings from text.
-    Avoids counting digits that are inside detected date spans.
+    - Normalizes Arabic/Persian digits to ASCII first
+    - Finds English & Arabic month dates
+    - Skips numbers that fall inside date spans
     """
-    text = text or ""
-    # collect date spans to avoid double counting digits inside dates
-    dates, spans = [], []
-    for m in DATE_RE.finditer(text):
-        dates.append(m.group(0))
-        spans.append((m.start(), m.end()))
+    text_norm = normalize_digits(text or "")
+
+    # Collect date spans so we don't count digits inside dates
+    dates, spans = _find_dates(text_norm)
 
     def in_date_span(a, b):
         for s, e in spans:
@@ -77,7 +104,7 @@ def extract_numbers_dates(text):
         return False
 
     raw_nums = []
-    for m in NUM_RE.finditer(text):
+    for m in NUM_RE.finditer(text_norm):
         if in_date_span(m.start(), m.end()):
             continue
         raw_nums.append(m.group(0))
