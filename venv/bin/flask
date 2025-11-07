@@ -1,6 +1,4 @@
-#!/bin/sh
-'''exec' "/Users/mac/Documents/Transalation Comparison Webapp/venv/bin/python3.11" "$0" "$@"
-' '''
+#!/Users/mac/Documents/GitHub/Translation-Comparison-WebApp/venv/bin/python3.11
 # -*- coding: utf-8 -*-
 import re
 import sys

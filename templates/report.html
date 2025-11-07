@@ -1,35 +1,31 @@
 <!doctype html>
 <html>
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Report</title>
-  <link rel="stylesheet" href="/static/styles.css" />
+  <meta charset="utf-8"/>
+  <title>Run Report</title>
+  <link rel="stylesheet" href="/static/styles.css"/>
 </head>
 <body>
-  <main class="container">
+  <div class="container">
     <h1>Run Report</h1>
-    <div class="card">
-      <h2>Summary</h2>
-      <ul>
-        <li>Segments: {{data.summary.segments}}</li>
-        <li>High: {{data.summary.high}}</li>
-        <li>Medium: {{data.summary.medium}}</li>
-        <li>Low: {{data.summary.low}}</li>
-      </ul>
-    </div>
-
-    <h2>Issues</h2>
+    <p><strong>Segments:</strong> {{ data.summary.segments }} &nbsp; | &nbsp;
+       <strong>High:</strong> {{ data.summary.high }} &nbsp; 
+       <strong>Medium:</strong> {{ data.summary.medium }} &nbsp; 
+       <strong>Low:</strong> {{ data.summary.low }}</p>
+    <hr/>
     {% for it in data.issues %}
-      <div class="card {{it.severity}}">
-        <div><strong>[{{it.severity|upper}}] {{it.type}}</strong> — Segment {{it.segment}}</div>
-        <div><em>Source:</em> {{it.src}}</div>
-        <div><em>Target:</em> {{it.tgt}}</div>
+      <div class="issue">
+        <div class="badge {{ it.severity }}">{{ it.severity|upper }}</div>
+        <div class="type">{{ it.type }}</div>
+        <div class="seg">Segment {{ it.segment }}</div>
+        <div class="src">Source: {{ it.src }}</div>
+        <div class="tgt">Target: {{ it.tgt }}</div>
         {% if it.detail %}
-        <pre>{{it.detail | tojson(indent=2)}}</pre>
+        <pre class="detail">{{ it.detail | tojson(indent=2) }}</pre>
         {% endif %}
       </div>
+      <hr/>
     {% endfor %}
-  </main>
+  </div>
 </body>
 </html>

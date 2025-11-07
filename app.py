@@ -1,13 +1,23 @@
-# app.py
 from flask import Flask, render_template, request, jsonify
 import os, uuid, json
+from werkzeug.utils import secure_filename
 from services.extract import to_text
 from services.align import simple_align
-from services.checks import run_checks
+from services.checks import run_checks as run_checks_python
+from services.llm import run_checks_llm
 
 app = Flask(__name__)
-app.config["UPLOAD_FOLDER"] = "runs"
-os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
+app.config["MAX_CONTENT_LENGTH"] = 20 * 1024 * 1024  # 20MB
+UPLOAD_ROOT = "/tmp/translation-checker" if os.path.isdir("/tmp") else "runs"
+os.makedirs(UPLOAD_ROOT, exist_ok=True)
+ALLOWED = {".txt", ".docx"}
+
+def _ext_ok(name): 
+    return os.path.splitext(name or "")[1].lower() in ALLOWED
+
+@app.errorhandler(413)
+def too_large(_e):
+    return jsonify({"error": "File too large (max 20MB)."}), 413
 
 @app.get("/")
 def index():
@@ -15,44 +25,60 @@ def index():
 
 @app.post("/analyze")
 def analyze():
-    run_id = str(uuid.uuid4())
-    run_dir = os.path.join(app.config["UPLOAD_FOLDER"], run_id)
-    os.makedirs(run_dir, exist_ok=True)
+    try:
+        if "original" not in request.files or "translation" not in request.files:
+            return jsonify({"error": "Upload both files (original & translation)."}), 400
 
-    if "original" not in request.files or "translation" not in request.files:
-        return jsonify({"error": "Please upload both files (original & translation)."}), 400
+        mode = request.form.get("mode", "python")  # 'python' or 'chatgpt'
+        orig = request.files["original"]
+        tran = request.files["translation"]
 
-    orig = request.files["original"]
-    tran = request.files["translation"]
-    glossary = request.files.get("glossary")
+        if not orig.filename or not tran.filename:
+            return jsonify({"error": "Choose both files before submitting."}), 400
+        if not _ext_ok(orig.filename) or not _ext_ok(tran.filename):
+            return jsonify({"error": "Only .txt and .docx are supported."}), 400
 
-    orig_path = os.path.join(run_dir, "original")
-    tran_path = os.path.join(run_dir, "translation")
-    orig.save(orig_path)
-    tran.save(tran_path)
-    glossary_path = None
-    if glossary and glossary.filename:
-        glossary_path = os.path.join(run_dir, "glossary.csv")
-        glossary.save(glossary_path)
+        run_id = str(uuid.uuid4())
+        run_dir = os.path.join(UPLOAD_ROOT, run_id)
+        os.makedirs(run_dir, exist_ok=True)
+        op = os.path.join(run_dir, secure_filename(orig.filename))
+        tp = os.path.join(run_dir, secure_filename(tran.filename))
+        orig.save(op)
+        tran.save(tp)
 
-    src_txt = to_text(orig_path)
-    tgt_txt = to_text(tran_path)
+        src_txt = to_text(op)
+        tgt_txt = to_text(tp)
+        if not src_txt.strip() or not tgt_txt.strip():
+            return jsonify({"error": "Could not read text from one of the files."}), 400
 
-    src_segments, tgt_segments = simple_align(src_txt, tgt_txt)
-    results = run_checks(src_segments, tgt_segments, glossary_path)
+        src_segments, tgt_segments = simple_align(src_txt, tgt_txt)
 
-    with open(os.path.join(run_dir, "results.json"), "w", encoding="utf-8") as f:
-        json.dump(results, f, ensure_ascii=False, indent=2)
+        if mode == "chatgpt":
+            key_path = os.path.join(os.path.dirname(__file__), "local_openai_key.txt")
+            if not os.path.exists(key_path):
+                return jsonify({"error": "ChatGPT mode selected but local_openai_key.txt not found."}), 400
+            with open(key_path, "r", encoding="utf-8") as f:
+                api_key = f.read().strip()
+            results = run_checks_llm(src_segments, tgt_segments, api_key)
+        else:
+            results = run_checks_python(src_segments, tgt_segments)
 
-    return jsonify({
-        "run_id": run_id,
-        "summary": results.get("summary", {}),
-        "issues": results.get("issues", [])
-    })
+        with open(os.path.join(run_dir, "results.json"), "w", encoding="utf-8") as f:
+            json.dump(results, f, ensure_ascii=False, indent=2)
+
+        return jsonify({
+            "run_id": run_id,
+            "summary": results.get("summary", {}),
+            "issues": results.get("issues", [])
+        })
+
+    except Exception as e:
+        # Show the actual error string (helps diagnose ChatGPT mode failures)
+        return jsonify({"error": f"Analyze failed: {type(e).__name__}: {str(e)}"}), 500
 
 @app.get("/report/<run_id>")
 def report(run_id):
-    fp = os.path.join(app.config["UPLOAD_FOLDER"], run_id, "results.json")
+    fp = os.path.join(UPLOAD_ROOT, run_id, "results.json")
     if not os.path.exists(fp):
         return "Report not found", 404
     with open(fp, encoding="utf-8") as f:
@@ -60,4 +86,4 @@ def report(run_id):
     return render_template("report.html", data=data, run_id=run_id)
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")), debug=True)

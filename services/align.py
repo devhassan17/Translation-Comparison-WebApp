@@ -1,17 +1,15 @@
-# services/align.py
 import regex as re
 
-SPLIT_RE = re.compile(r'(?<=[.!?。؟])\s+')
+_SPLIT = re.compile(r"[\.!?]+[\s]+|\n+", re.M)
 
-def split_sentences(text):
-    if not text:
-        return []
-    parts = SPLIT_RE.split(text.strip())
-    return [p for p in parts if p and p.strip()]
+def _split(text: str):
+    text = text or ""
+    parts = [p.strip() for p in _SPLIT.split(text) if p.strip()]
+    return parts if parts else [text.strip()]
 
-def simple_align(src, tgt):
-    s = split_sentences(src)
-    t = split_sentences(tgt)
+def simple_align(src_text: str, tgt_text: str):
+    s = _split(src_text)
+    t = _split(tgt_text)
     n = max(len(s), len(t))
     s += [""] * (n - len(s))
     t += [""] * (n - len(t))

@@ -38,7 +38,7 @@ deactivate () {
 # unset irrelevant variables
 deactivate nondestructive
 
-VIRTUAL_ENV="/Users/mac/Documents/Transalation Comparison Webapp/venv"
+VIRTUAL_ENV="/Users/mac/Documents/GitHub/Translation-Comparison-WebApp/venv"
 export VIRTUAL_ENV
 
 _OLD_VIRTUAL_PATH="$PATH"
