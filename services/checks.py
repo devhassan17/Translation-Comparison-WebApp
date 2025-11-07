@@ -1,65 +1,63 @@
 # services/checks.py
-# v2.2 — locale-aware numbers/dates (Arabic months + Arabic/Persian digits) + refined name-typo heuristic
+# v3 — language-agnostic dates via dateparser + all-Unicode digit normalization
+#      locale-agnostic number normalization + refined name-typo heuristic
 
 import regex as re
+import unicodedata
 from rapidfuzz import fuzz
+from dateparser.search import search_dates
 
-# ---------- Digit normalization ----------
-# Map Arabic-Indic ٠١٢٣٤٥٦٧٨٩ and Persian ۰۱۲۳۴۵۶۷۸۹ -> ASCII 0-9
-_ARABIC_INDIC = dict(zip("٠١٢٣٤٥٦٧٨٩", "0123456789"))
-_PERSIAN = dict(zip("۰۱۲۳۴۵۶۷۸۹", "0123456789"))
-_DIGIT_MAP = str.maketrans({**_ARABIC_INDIC, **_PERSIAN})
-
+# ---------- All-Unicode digit normalization ----------
 def normalize_digits(text: str) -> str:
-    return (text or "").translate(_DIGIT_MAP)
+    """
+    Convert any Unicode decimal digit (category Nd) to ASCII 0-9.
+    Works for Arabic-Indic, Persian, Devanagari, etc.
+    """
+    if not text:
+        return ""
+    out = []
+    for ch in text:
+        try:
+            if unicodedata.category(ch) == "Nd":
+                out.append(str(unicodedata.digit(ch)))
+            else:
+                out.append(ch)
+        except (TypeError, ValueError):
+            out.append(ch)
+    return "".join(out)
 
 # ---------- Regexes ----------
 NUM_RE = re.compile(r"""
     (?<!\w)                # not part of a word
     [+-]?                  # optional sign
     (?:
-        \d{1,3}(?:[.,\s]\d{3})*   # 1,250 or 1.250 or 1 250
-        (?:[.,]\d+)?              # optional decimals ,50 or .50
-      | \d+(?:[.,]\d+)?           # plain 1250.50
+        \d{1,3}(?:[.,\s\u00A0]\d{3})*   # 1,250 or 1.250 or 1 250 or 1 250
+        (?:[.,]\d+)?                    # optional decimals ,50 or .50
+      | \d+(?:[.,]\d+)?                 # plain 1250.50
     )
     (?!\w)
 """, re.X)
 
-# English month names
-EN_DATE_RE = re.compile(r"""
-    \b(
-        \d{1,2}[/\-]\d{1,2}[/\-]\d{2,4}     # 12/10/2025 or 12-10-2025
-        | (?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\w*
-          \s+\d{1,2},?\s+\d{2,4}            # Dec 10, 2025
-    )\b
-""", re.I | re.X)
-
-# Arabic month names (with common spelling variants)
-AR_MONTHS = r"(يناير|فبراير|مارس|أبريل|ابريل|إبريل|مايو|يونيو|يوليو|أغسطس|اغسطس|سبتمبر|أكتوبر|اكتوبر|نوفمبر|ديسمبر)"
-AR_DATE_RE = re.compile(rf"\b(\d{{1,2}})\s+{AR_MONTHS}\s+\d{{2,4}}\b")
-
-EXTRA_SPACE_RE = re.compile(r'\s{2,}')
+EXTRA_SPACE_RE = re.compile(r'(?:\s|\u00A0){2,}')
 DOUBLE_PUNCT_RE = re.compile(r'([!?.,:;])\1+')
 
-# Refined name extraction helpers
+# Refined name extraction (best for cased scripts; still harmless for others)
 TITLE = re.compile(r"^\p{Lu}\p{Ll}+$")       # Titlecase word: John, Maria
 ALLCAPS = re.compile(r"^\p{Lu}{2,}$")        # Acronyms: IBM, USA
 NAME_STOPWORDS = {
-    # English
     "Contact", "Dear", "Attention", "Attn", "Mr", "Mrs", "Ms",
-    # Some common openers (extend as needed)
     "Contacto", "Estimado", "Estimados", "Estimada", "Bonjour", "Caro", "Cara",
 }
 
-# ---------- Helpers ----------
+# ---------- Numbers ----------
 def _normalize_amount(s: str) -> str:
     """
-    Canonicalize amounts like '1,250.50' or '1.250,50' -> '1250.50'.
+    Canonicalize amounts like '1,250.50', '1.250,50', '1 250,50' -> '1250.50'.
     Heuristic: the rightmost separator among . or , is the decimal mark.
-    Currency markers are stripped first.
+    Strips common currency markers.
     """
-    s = normalize_digits(s).strip().replace('\u00A0', ' ')
-    s = re.sub(r'(USD|EUR|GBP|PKR|\$|€|£)\s*', '', s, flags=re.I)
+    s = normalize_digits((s or "").strip()).replace('\u00A0', ' ')
+    s = re.sub(r'(USD|EUR|GBP|PKR|AUD|CAD|JPY|CNY|INR|SAR|AED|\$|€|£|¥|₹)\s*', '', s, flags=re.I)
     s2 = re.sub(r'[^0-9.,]', '', s)
     if not s2:
         return ''
@@ -72,30 +70,93 @@ def _normalize_amount(s: str) -> str:
     dec_part = re.sub(r'[.,\s]', '', s2[dec_idx+1:])
     return f"{int_part}.{dec_part}"
 
-def _find_dates(text_norm: str):
-    """Return list of date strings and their spans from normalized text."""
-    dates, spans = [], []
-    # English-style & numeric
-    for m in EN_DATE_RE.finditer(text_norm):
-        dates.append(m.group(0))
-        spans.append((m.start(), m.end()))
-    # Arabic month names (digits already normalized)
-    for m in AR_DATE_RE.finditer(text_norm):
-        dates.append(m.group(0))
-        spans.append((m.start(), m.end()))
-    return dates, spans
+# ---------- Dates (language-agnostic via dateparser) ----------
+def _find_dates_any_language(text_norm: str):
+    """
+    Use dateparser to find dates in any language/script. Returns:
+      raw_dates: list of matched substrings,
+      spans: list of (start, end) indexes,
+      iso_dates: list of YYYY-MM-DD strings
+    """
+    raw_dates, spans, iso_dates = [], [], []
+    # settings: don't try future bias, prefer detecting both MDY/DMY; keep timezone-naive
+    results = search_dates(
+        text_norm,
+        settings={
+            "PREFER_DAY_OF_MONTH": "first",
+            "PREFER_DATES_FROM": "past",
+            "RETURN_AS_TIMEZONE_AWARE": False,
+            "RELATIVE_BASE": None,
+            # allow both orders; dateparser will infer using language cues & separators
+            "DATE_ORDER": "DMY",
+        },
+        add_detected_language=True,  # returns tuples (text, dt, lang)
+    )
+
+    if not results:
+        return raw_dates, spans, iso_dates
+
+    # Walk through results and deduplicate overlapping matches by keeping longest
+    # Convert dt to ISO (date only)
+    # results format: [(matched_text, datetime, lang), ...] depending on version
+    # dateparser may return [(text, dt), ...] without lang; handle both
+    def to_iso(dt):
+        try:
+            return f"{dt.year:04d}-{dt.month:02d}-{dt.day:02d}"
+        except Exception:
+            return None
+
+    used = []
+    idx = 0
+    cursor = 0
+    text_len = len(text_norm)
+
+    # To get spans, re-search occurrences of each raw substring sequentially
+    for item in results:
+        if len(item) == 3:
+            raw, dt, _lang = item
+        else:
+            raw, dt = item
+        raw = str(raw)
+        # find next occurrence of raw starting at cursor to avoid earlier duplicates
+        start = text_norm.find(raw, cursor)
+        if start == -1:
+            # fallback: global search
+            start = text_norm.find(raw)
+            if start == -1:
+                continue
+        end = start + len(raw)
+        cursor = end  # move cursor forward
+
+        iso = to_iso(dt)
+        if not iso:
+            continue
+
+        # deduplicate overlaps: drop if fully inside an existing span
+        overlapped = False
+        for s, e in spans:
+            if start >= s and end <= e:
+                overlapped = True
+                break
+        if overlapped:
+            continue
+
+        raw_dates.append(raw)
+        spans.append((start, end))
+        iso_dates.append(iso)
+
+    return raw_dates, spans, iso_dates
 
 def extract_numbers_dates(text):
     """
-    Extract normalized numbers and raw date strings from text.
-    - Normalizes Arabic/Persian digits to ASCII first
-    - Finds English & Arabic month dates
+    Extract normalized numbers and normalized dates (ISO).
+    - Normalizes all Unicode digits to ASCII
+    - Finds dates in any language using dateparser
     - Skips numbers that fall inside date spans
     """
     text_norm = normalize_digits(text or "")
 
-    # Collect date spans so we don't count digits inside dates
-    dates, spans = _find_dates(text_norm)
+    _raw_dates, spans, norm_dates = _find_dates_any_language(text_norm)
 
     def in_date_span(a, b):
         for s, e in spans:
@@ -110,16 +171,13 @@ def extract_numbers_dates(text):
         raw_nums.append(m.group(0))
 
     norm_nums = [x for x in (_normalize_amount(n) for n in raw_nums) if x]
-    return norm_nums, dates
+    return norm_nums, norm_dates
 
+# ---------- Names (lightweight heuristic) ----------
 def _extract_name_spans(text: str):
     """
     Return a list of person-name candidates like ['John Smith', 'Maria Lopez'].
-    Heuristics:
-      - group consecutive Titlecase tokens
-      - require at least 2 tokens
-      - ignore groups starting with common openers (Contact/Contacto/etc.)
-      - ignore ALLCAPS tokens (likely org acronyms like IBM) inside the span
+    Works best for cased scripts; harmless no-op fallback for others.
     """
     if not text:
         return []
@@ -139,7 +197,6 @@ def _extract_name_spans(text: str):
     for grp in spans:
         if grp[0] in NAME_STOPWORDS:
             continue
-        # Drop ALLCAPS (acronyms) but keep the 2+ Titlecase core
         grp2 = [t for t in grp if not ALLCAPS.match(t)]
         if len(grp2) >= 2:
             cleaned.append(" ".join(grp2))
@@ -176,11 +233,10 @@ def run_checks(src_segments, tgt_segments, glossary_path=None):
                     if term and pref:
                         glossary[term] = pref
         except Exception:
-            # Silently skip glossary errors in MVP
-            pass
+            pass  # MVP: ignore glossary read failures
 
     for i, (s, t) in enumerate(zip(src_segments, tgt_segments), start=1):
-        # Numbers & dates
+        # Numbers & Dates (language-agnostic)
         snums, sdates = extract_numbers_dates(s)
         tnums, tdates = extract_numbers_dates(t)
 
@@ -190,7 +246,8 @@ def run_checks(src_segments, tgt_segments, glossary_path=None):
                 "detail": {"src": snums, "tgt": tnums}
             })
 
-        if set(map(str.lower, sdates)) != set(map(str.lower, tdates)):
+        # sdates/tdates already ISO (YYYY-MM-DD)
+        if set(sdates) != set(tdates):
             issues.append({
                 "type": "date_mismatch", "severity": "high", "segment": i, "src": s, "tgt": t,
                 "detail": {"src": sdates, "tgt": tdates}
@@ -198,42 +255,42 @@ def run_checks(src_segments, tgt_segments, glossary_path=None):
 
         # Untranslated suspicion
         if s and t and fuzz.partial_ratio(s, t) >= 90:
-            issues.append({"type": "possibly_untranslated", "severity": "medium", "segment": i, "src": s, "tgt": t})
+            issues.append({"type": "possibly_untranslated", "severity": "medium",
+                           "segment": i, "src": s, "tgt": t})
 
         # Length ratio drift
         if s:
             ratio = len(t) / max(1, len(s))
             if ratio < 0.5 or ratio > 2.0:
-                issues.append({
-                    "type": "length_ratio", "severity": "low", "segment": i, "src": s, "tgt": t,
-                    "detail": {"ratio": round(ratio, 2)}
-                })
+                issues.append({"type": "length_ratio", "severity": "low",
+                               "segment": i, "src": s, "tgt": t,
+                               "detail": {"ratio": round(ratio, 2)}})
 
         # Orthography basics
         if t and EXTRA_SPACE_RE.search(t):
-            issues.append({"type": "orthography_extra_spaces", "severity": "low", "segment": i, "src": s, "tgt": t})
+            issues.append({"type": "orthography_extra_spaces", "severity": "low",
+                           "segment": i, "src": s, "tgt": t})
         if t and DOUBLE_PUNCT_RE.search(t):
-            issues.append({"type": "orthography_double_punctuation", "severity": "low", "segment": i, "src": s, "tgt": t})
+            issues.append({"type": "orthography_double_punctuation", "severity": "low",
+                           "segment": i, "src": s, "tgt": t})
 
         # Glossary enforcement (simple contains check)
         for term, pref in glossary.items():
             if term in (s or "") and pref and pref not in (t or ""):
-                issues.append({
-                    "type": "glossary_preferred_missing", "severity": "medium", "segment": i, "src": s, "tgt": t,
-                    "detail": {"term": term, "preferred": pref}
-                })
+                issues.append({"type": "glossary_preferred_missing", "severity": "medium",
+                               "segment": i, "src": s, "tgt": t,
+                               "detail": {"term": term, "preferred": pref}})
 
         # Name typo heuristic
         for (orig_name, tgt_name, score) in name_typos(s, t):
-            issues.append({
-                "type": "name_possible_typo", "severity": "medium", "segment": i, "src": s, "tgt": t,
-                "detail": {"source_name": orig_name, "target_near": tgt_name, "score": score}
-            })
+            issues.append({"type": "name_possible_typo", "severity": "medium",
+                           "segment": i, "src": s, "tgt": t,
+                           "detail": {"source_name": orig_name, "target_near": tgt_name, "score": score}})
 
     summary = {
         "high": sum(1 for x in issues if x["severity"] == "high"),
         "medium": sum(1 for x in issues if x["severity"] == "medium"),
         "low": sum(1 for x in issues if x["severity"] == "low"),
-        "segments": len(src_segments)
+        "segments": len(src_segments),
     }
     return {"summary": summary, "issues": issues}
