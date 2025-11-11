@@ -1,5 +1,6 @@
 import regex as re
 
+# Simple sentence-ish splitter by punctuation or newlines
 _SPLIT = re.compile(r"[\.!?]+[\s]+|\n+", re.M)
 
 def _split(text: str):

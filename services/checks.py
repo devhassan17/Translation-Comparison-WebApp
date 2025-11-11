@@ -1,4 +1,3 @@
-# Deterministic checks (no ChatGPT)
 import regex as re
 import unicodedata
 from rapidfuzz import fuzz
@@ -10,12 +9,29 @@ DOUBLE_PUNCT_RE = re.compile(r'([!?.,:;])\1+')
 TITLE = re.compile(r"^\p{Lu}\p{Ll}+$")
 ALLCAPS = re.compile(r"^\p{Lu}{2,}$")
 
+# English, Spanish, French, German, Italian, Portuguese, Turkish, Arabic (common variants)
 MONTH_WORD_RE = re.compile(
-    r"\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec"
-    r"|enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre"
-    r"|janvier|février|fevrier|mars|avril|mai|juin|juillet|août|aout|septembre|octobre|novembre|décembre|decembre"
-    r"|january|february|march|april|may|june|july|august|september|october|november|december"
-    r")\b", re.I
+    r"\b(?:"
+    # En
+    r"jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec|"
+    r"january|february|march|april|june|july|august|september|october|november|december|"
+    # Es
+    r"enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre|"
+    # Fr
+    r"janvier|février|fevrier|mars|avril|mai|juin|juillet|août|aout|septembre|octobre|novembre|décembre|decembre|"
+    # De
+    r"jan|feb|mär|maer|apr|mai|jun|jul|aug|sep|okt|nov|dez|"
+    r"januar|februar|märz|maerz|april|mai|juni|juli|august|september|oktober|november|dezember|"
+    # It
+    r"gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre|"
+    # Pt
+    r"janeiro|fevereiro|março|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro|"
+    # Tr
+    r"ocak|şubat|subat|mart|nisan|mayıs|mayis|haziran|temmuz|ağustos|agustos|eylül|eylul|ekim|kasım|kasim|aralık|aralik|"
+    # Ar
+    r"يناير|فبراير|مارس|أبريل|ابريل|مايو|يونيو|يوليو|أغسطس|اغسطس|سبتمبر|أكتوبر|اكتوبر|نوفمبر|ديسمبر"
+    r")\b",
+    re.I
 )
 
 def normalize_digits(text: str) -> str:
@@ -42,18 +58,16 @@ def _normalize_amount(s: str) -> str:
     last_dot = s2.rfind('.')
     dec_idx = max(last_comma, last_dot)
     if dec_idx == -1:
-        return re.sub(r'[.,\s]', '', s2)  # integer only
+        return re.sub(r'[.,\s]', '', s2)
     int_part = re.sub(r'[.,\s]', '', s2[:dec_idx])
     dec_part = re.sub(r'[.,\s]', '', s2[dec_idx+1:])
     return int_part + '.' + dec_part
 
 def _looks_like_numeric_date(raw: str) -> bool:
     s = raw.strip()
-    # dd/mm/yyyy, dd-mm-yyyy, dd.mm.yyyy
-    if re.match(r"^\d{1,2}([/\-.])\d{1,2}\1\d{4}$", s):
+    if re.match(r"^\d{1,2}([/\-.])\d{1,2}\1\d{4}$", s):  # dd/mm/yyyy
         return True
-    # yyyy-mm-dd or yyyy.mm.dd
-    if re.match(r"^\d{4}([\-\.])\d{1,2}\1\d{1,2}$", s):
+    if re.match(r"^\d{4}([\-\.])\d{1,2}\1\d{1,2}$", s):  # yyyy-mm-dd
         return True
     return False
 
@@ -62,10 +76,9 @@ def _has_month_word(ctx: str) -> bool:
 
 def _find_dates_any_language(text_norm: str):
     """
-    Use dateparser.search_dates but filter aggressively:
-    - keep matches with a month word near the span, OR
-    - keep purely numeric matches ONLY if they look like a date pattern.
-    - reject any match containing '%' (to avoid 19,6% => 2025-06-19).
+    Use dateparser.search_dates with strong filtering:
+    - Keep if a month word is nearby, or a clean numeric date pattern.
+    - Reject matches containing '%' to avoid 19,6% → 2025-06-19.
     """
     raw_dates, spans, iso_dates = [], [], []
     settings = {
@@ -89,12 +102,12 @@ def _find_dates_any_language(text_norm: str):
 
     cursor = 0
     for item in results:
-        # item may be (raw, dt) or (raw, dt, lang)
         raw, dt = item[0], item[1]
         raw = str(raw)
 
+        # Reject percent contexts outright
         if "%" in raw:
-            continue  # reject percent contexts
+            continue
 
         start = text_norm.find(raw, cursor)
         if start == -1:
@@ -102,15 +115,13 @@ def _find_dates_any_language(text_norm: str):
             if start == -1:
                 continue
         end = start + len(raw)
-        # context ±15 chars
         left = max(0, start - 15)
         right = min(len(text_norm), end + 15)
-        month_near = _has_month_word(text_norm[left:right])
 
+        month_near = _has_month_word(text_norm[left:right])
         has_letters = bool(re.search(r"\p{L}", raw))
         numeric_ok = _looks_like_numeric_date(raw)
 
-        # require either a month name nearby or a clean numeric pattern
         if not (month_near or numeric_ok):
             continue
 
@@ -118,13 +129,8 @@ def _find_dates_any_language(text_norm: str):
         if not iso:
             continue
 
-        # de-dup overlaps
-        overlapped = False
-        for s, e in spans:
-            if start >= s and end <= e:
-                overlapped = True
-                break
-        if overlapped:
+        # avoid nesting overlaps
+        if any(start >= s and end <= e for s, e in spans):
             continue
 
         raw_dates.append(raw)

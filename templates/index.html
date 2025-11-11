@@ -8,12 +8,16 @@
 <body>
   <div class="container">
     <h1>Translation QA — Two Uploads</h1>
-    <form id="form" method="post" action="/analyze" enctype="multipart/form-data">
+    <form id="form" method="post" enctype="multipart/form-data">
       <div class="row">
-        <label>Original:<input type="file" name="original" required /></label>
+        <label>Original:
+          <input type="file" name="original" accept=".txt,.docx,.pdf" required />
+        </label>
       </div>
       <div class="row">
-        <label>Translation:<input type="file" name="translation" required /></label>
+        <label>Translation:
+          <input type="file" name="translation" accept=".txt,.docx,.pdf" required />
+        </label>
       </div>
       <div class="row">
         <label><input type="radio" name="mode" value="python" checked /> Python modules (offline)</label>
@@ -23,8 +27,14 @@
         <button type="submit">Analyze</button>
       </div>
     </form>
+
+    <div id="progress" class="progress hidden">
+      <div class="bar" id="bar"></div>
+      <div class="label" id="plabel">Queued…</div>
+    </div>
+
     <pre id="out"></pre>
-    <p class="hint">ChatGPT mode reads your API key from <code>local_openai_key.txt</code> next to <code>app.py</code>.</p>
+    <div id="download"></div>
   </div>
   <script src="/static/app.js"></script>
 </body>

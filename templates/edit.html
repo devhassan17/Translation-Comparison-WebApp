@@ -1,0 +1,349 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>Edit & Fix — Run {{ run_id }}</title>
+  <link rel="stylesheet" href="/static/styles.css"/>
+  <style>
+    .layout { display:grid; grid-template-columns: 1fr 320px; gap:16px; }
+    .editor { background:#0c1326; padding:12px; border-radius:12px; max-height:72vh; overflow:auto; }
+    .sidebar { background:#0c1326; padding:12px; border-radius:12px; max-height:72vh; overflow:auto; }
+    .seg { border:1px solid #222b50; margin-bottom:10px; padding:10px; border-radius:8px; background:#0f1833; }
+    .seg-num { font-size:12px; opacity:.8; margin-bottom:6px; }
+    .seg[contenteditable="true"] { outline:none; }
+    .seg.issue-high   { box-shadow:0 0 0 2px #ff6b6b66 inset; }
+    .seg.issue-medium { box-shadow:0 0 0 2px #ffd16666 inset; }
+    .seg.issue-low    { box-shadow:0 0 0 2px #74c69d66 inset; }
+    .issue-item { font-size:13px; padding:6px; border-radius:8px; background:#0f1833; margin-bottom:8px; cursor:pointer; }
+    .issue-item.high { border-left:4px solid #ff6b6b; }
+    .issue-item.medium { border-left:4px solid #ffd166; }
+    .issue-item.low { border-left:4px solid #74c69d; }
+    .toolbar { margin-bottom:12px; display:flex; gap:8px; align-items:center; }
+    .muted { opacity:.75; }
+    .sticky { position:sticky; top:0; background:#11162a; padding:8px 0; z-index:1; }
+    .success { color:#74c69d; }
+    .error { color:#ff6b6b; }
+    /* Preserve exact spaces/newlines */
+    .body { white-space: pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Edit & Fix — Run {{ run_id }}</h1>
+    <div class="toolbar sticky">
+      <button id="saveBtn" class="button">Save & Download fixed DOCX</button>
+      <a class="button" id="backBtn" href="/">New Comparison</a>
+      <label style="margin-left:12px;"><input type="checkbox" id="invChk"> Show invisibles (spaces)</label>
+      <span id="status" class="muted"></span>
+    </div>
+    <div class="layout">
+      <div>
+        <div id="editor" class="editor"></div>
+      </div>
+      <div>
+        <div id="panel" class="sidebar">
+          <h3>Issues</h3>
+          <div id="issues"></div>
+          <hr/>
+          <p class="muted">Tip: Click an issue to jump to that segment. Your edits autosave locally in your browser.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script>
+    const runId = "{{ run_id }}";
+    const editorEl = document.getElementById('editor');
+    const issuesEl = document.getElementById('issues');
+    const panelEl  = document.getElementById('panel');
+    const saveBtn = document.getElementById('saveBtn');
+    const statusEl = document.getElementById('status');
+    const invChk = document.getElementById('invChk');
+
+    const LS_KEY = "edit_"+runId;
+    let SRC = [];        // source segments
+    let TGT = [];        // initial target segments
+    let GLOBAL_ISSUES = [];
+
+    // --- Utils: show invisibles (spaces) visually without altering text ---
+    invChk.addEventListener('change', () => {
+      document.body.classList.toggle('show-invis', invChk.checked);
+      // CSS-free light trick: replace normal spaces by NBSP visually by wrapping text nodes? Not needed:
+      // We're using pre-wrap + monospace so double spaces are visible already.
+    });
+
+    // --- Validators (client-side mirrors) ---
+    const NUM_RE = /(?<!\w)[+-]?(?:\d{1,3}(?:[.,\s\u00A0]\d{3})*(?:[.,]\d+)?|\d+(?:[.,]\d+)?)(?!\w)/g;
+    const DOUBLE_PUNCT_RE = /([!?.,:;])\1+/;
+
+    const MONTHS = {
+      en: {jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12},
+      fr: {janv:1,fev:2,fév:2,mars:3,avr:4,mai:5,juin:6,juil:7,août:8,aout:8,sept:9,oct:10,nov:11,déc:12,dec:12},
+      de: {jan:1,feb:2,mär:3,maerz:3,marz:3,apr:4,mai:5,jun:6,jul:7,aug:8,sep:9,okt:10,nov:11,dez:12},
+      es: {ene:1,feb:2,mar:3,abr:4,may:5,jun:6,jul:7,ago:8,sep:9,oct:10,nov:11,dic:12}
+    };
+    function _lastDecIdx(s){ return Math.max(s.lastIndexOf(','), s.lastIndexOf('.')); }
+    function normAmount(s){
+      const digits = s.replace(/[^\d.,]/g,'');
+      if(!digits) return '';
+      const di = _lastDecIdx(digits);
+      if (di === -1) return digits.replace(/[.,\s]/g,'');
+      const intp = digits.slice(0,di).replace(/[.,\s]/g,'');
+      const decp = digits.slice(di+1).replace(/[.,\s]/g,'');
+      return intp + '.' + decp;
+    }
+    function numbers(text){
+      const out = [];
+      const t = (text||'');
+      const m = t.match(NUM_RE) || [];
+      for (const n of m){ out.push(normAmount(n)); }
+      return out.filter(Boolean);
+    }
+    function isoFromParts(y,m,d){
+      y = (+y)||0; m=(+m)||0; d=(+d)||0;
+      if(!y||!m||!d) return null;
+      return `${String(y).padStart(4,'0')}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    }
+    function dates(text){
+      const t = (text||'');
+      const out = new Set();
+
+      // ISO yyyy-mm-dd
+      for (const m of t.matchAll(/\b(\d{4})-(\d{1,2})-(\d{1,2})\b/g)){
+        const iso = isoFromParts(m[1], m[2], m[3]);
+        if (iso) out.add(iso);
+      }
+      // dd/mm/yyyy or dd.mm.yyyy
+      for (const m of t.matchAll(/\b(\d{1,2})[\/\.](\d{1,2})[\/\.](\d{4})\b/g)){
+        const iso = isoFromParts(m[3], m[2], m[1]);
+        if (iso) out.add(iso);
+      }
+      // Month name (en/fr/de/es) + day, year  (very light heuristic)
+      const lower = t.toLowerCase();
+      for (const lang of Object.values(MONTHS)){
+        for (const [key, mnum] of Object.entries(lang)){
+          const rx = new RegExp(`\\b${key}\\w*\\s+(\\d{1,2}),?\\s+(\\d{4})`,'gi');
+          let m;
+          while ((m = rx.exec(lower))){
+            const iso = isoFromParts(m[2], mnum, m[1]);
+            if (iso) out.add(iso);
+          }
+        }
+      }
+      return Array.from(out);
+    }
+    function strip(s){ return (s||'').trim(); }
+    function simEq(a,b){
+      // very light “possibly_untranslated”: ignore case/punct/space runs
+      const n = x => x.toLowerCase().replace(/[\s.,;:!?'"()\-]+/g,' ').trim();
+      return n(a) === n(b);
+    }
+    function lengthIssue(s, t){
+      const r = (t.length || 1) / Math.max(1, s.length);
+      return (r < 0.5 || r > 2.0) ? {type:'length_ratio', severity:'low'} : null;
+    }
+    function nameFixed(issue, targetText){
+      const det = issue.detail || {};
+      const srcName = (det.source_name || '').toLowerCase();
+      if (!srcName) return false;
+      const toks = srcName.split(/\s+/).filter(Boolean);
+      const t = (targetText || '').toLowerCase();
+      return toks.every(w => t.includes(w));
+    }
+
+    // recompute ALL issues for one segment using client heuristics
+    function recomputeSegmentIssues(segIndex, srcText, tgtText, existingIssues){
+      const rem = [];
+      const keep = [];
+
+      const sNums = numbers(srcText);
+      const tNums = numbers(tgtText);
+      const sDates = dates(srcText);
+      const tDates = dates(tgtText);
+
+      const stillHas = (type) => existingIssues.some(it => it.type === type);
+
+      if (stillHas('number_mismatch')){
+        if (new Set(sNums).size !== new Set(tNums).size || sNums.sort().join(',') !== tNums.sort().join(',')){
+          keep.push('number_mismatch');
+        } else rem.push('number_mismatch');
+      }
+      if (stillHas('date_mismatch')){
+        if (new Set(sDates).size !== new Set(tDates).size || sDates.sort().join(',') !== tDates.sort().join(',')){
+          keep.push('date_mismatch');
+        } else rem.push('date_mismatch');
+      }
+      if (stillHas('possibly_untranslated')){
+        if (simEq(srcText, tgtText)) keep.push('possibly_untranslated'); else rem.push('possibly_untranslated');
+      }
+      if (stillHas('orthography_extra_spaces')){
+        if (/\s{2,}/.test(tgtText)) keep.push('orthography_extra_spaces'); else rem.push('orthography_extra_spaces');
+      }
+      if (stillHas('orthography_double_punctuation')){
+        if (DOUBLE_PUNCT_RE.test(tgtText)) keep.push('orthography_double_punctuation'); else rem.push('orthography_double_punctuation');
+      }
+      if (stillHas('length_ratio')){
+        const li = lengthIssue(srcText, tgtText);
+        if (li) keep.push('length_ratio'); else rem.push('length_ratio');
+      }
+      if (stillHas('name_possible_typo')){
+        // if target now contains all words of source_name, consider fixed
+        const related = existingIssues.filter(i => i.type === 'name_possible_typo');
+        let anyKeep = false;
+        for (const it of related){
+          if (!nameFixed(it, tgtText)) { anyKeep = true; break; }
+        }
+        if (anyKeep) keep.push('name_possible_typo'); else rem.push('name_possible_typo');
+      }
+
+      // also keep any other types we don't know how to validate
+      for (const it of existingIssues){
+        if (!['number_mismatch','date_mismatch','possibly_untranslated','orthography_extra_spaces','orthography_double_punctuation','length_ratio','name_possible_typo'].includes(it.type)){
+          keep.push(it.type);
+        }
+      }
+
+      return {remove: rem, keep: keep};
+    }
+
+    function severityClassForSeg(segIndex) {
+      const mine = GLOBAL_ISSUES.filter(x => x.segment === segIndex);
+      if (mine.find(x => x.severity === 'high')) return 'issue-high';
+      if (mine.find(x => x.severity === 'medium')) return 'issue-medium';
+      if (mine.length) return 'issue-low';
+      return '';
+    }
+
+    function renderSegments(tgtSegments) {
+      editorEl.innerHTML = '';
+      tgtSegments.forEach((txt, i) => {
+        const segIndex = i+1;
+        const div = document.createElement('div');
+        div.className = `seg ${severityClassForSeg(segIndex)}`;
+        div.dataset.seg = String(segIndex);
+        div.contentEditable = "true";
+
+        const num = document.createElement('div');
+        num.className = 'seg-num';
+        num.textContent = "Segment " + segIndex;
+
+        const body = document.createElement('div');
+        body.className = 'body';
+        body.innerText = txt || '';
+
+        div.appendChild(num);
+        div.appendChild(body);
+        editorEl.appendChild(div);
+      });
+    }
+
+    function renderIssues() {
+      issuesEl.innerHTML = '';
+      if (!GLOBAL_ISSUES.length) { panelEl.style.display = 'none'; return; }
+      panelEl.style.display = '';
+      GLOBAL_ISSUES.forEach(it => {
+        const d = document.createElement('div');
+        d.className = `issue-item ${it.severity}`;
+        d.innerHTML = `<strong>[${it.severity.toUpperCase()}]</strong> seg ${it.segment} — ${it.type}`;
+        d.addEventListener('click', () => {
+          const sel = editorEl.querySelector(`[data-seg="${it.segment}"]`);
+          if (sel) { sel.scrollIntoView({behavior:'smooth', block:'center'}); }
+        });
+        issuesEl.appendChild(d);
+      });
+    }
+
+    function getEditedSegments() {
+      const out = [];
+      editorEl.querySelectorAll('.seg .body').forEach(body => {
+        out.push((body.innerText || '').replace(/\r/g,''));
+      });
+      return out;
+    }
+
+    function autosave() {
+      try {
+        localStorage.setItem(LS_KEY, JSON.stringify({ tgt: getEditedSegments() }));
+        statusEl.textContent = "Autosaved";
+        setTimeout(() => statusEl.textContent = "", 800);
+      } catch(e){}
+    }
+
+    // On edit, recompute issues for that segment and update panel+frame
+    editorEl.addEventListener('input', (e) => {
+      const segEl = e.target.closest('.seg');
+      if (!segEl) return;
+      const segIndex = Number(segEl.dataset.seg);
+      const body = segEl.querySelector('.body');
+      const newText = body?.innerText || '';
+
+      // existing issues for this segment
+      const mine = GLOBAL_ISSUES.filter(x => x.segment === segIndex);
+      const others = GLOBAL_ISSUES.filter(x => x.segment !== segIndex);
+
+      const rc = recomputeSegmentIssues(segIndex, SRC[segIndex-1] || '', newText, mine);
+
+      // rebuild GLOBAL_ISSUES
+      const kept = mine.filter(x => rc.keep.includes(x.type));
+      GLOBAL_ISSUES = others.concat(kept);
+
+      // UI: frame class
+      segEl.classList.remove('issue-high','issue-medium','issue-low');
+      segEl.classList.add(severityClassForSeg(segIndex));
+
+      // UI: panel
+      renderIssues();
+
+      // Hide issues panel if nothing left
+      if (!GLOBAL_ISSUES.length) panelEl.style.display = 'none';
+
+      autosave();
+    });
+
+    document.getElementById('saveBtn').addEventListener('click', async () => {
+      statusEl.textContent = "Saving...";
+      statusEl.className = "muted";
+      try {
+        const tgt = getEditedSegments();
+        const res = await fetch(`/save/${runId}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tgt_segments: tgt })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          statusEl.textContent = data.error || 'Save failed';
+          statusEl.className = "error";
+          return;
+        }
+        statusEl.innerHTML = `<span class="success">Saved!</span> <a class="button" href="${data.download}">Download translation_fixed.docx</a>`;
+      } catch (e) {
+        statusEl.textContent = "Save failed: " + e.message;
+        statusEl.className = "error";
+      }
+    });
+
+    async function init() {
+      const res = await fetch(`/data/${runId}`);
+      const data = await res.json();
+      if (!res.ok) {
+        editorEl.textContent = data.error || 'Failed to load run data';
+        return;
+      }
+      SRC = data?.segments?.src || [];
+      TGT = data?.segments?.tgt || [];
+      // restore local autosave
+      try {
+        const saved = JSON.parse(localStorage.getItem(LS_KEY) || '{}');
+        if (Array.isArray(saved.tgt) && saved.tgt.length === TGT.length) TGT = saved.tgt;
+      } catch(e){}
+      GLOBAL_ISSUES = (data.results?.issues || []).map(it => ({
+        segment: it.segment, type: it.type, severity: it.severity, detail: it.detail || {}
+      }));
+
+      renderSegments(TGT);
+      renderIssues();
+    }
+    init();
+  </script>
+</body>
+</html>

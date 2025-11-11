@@ -37,11 +37,9 @@ def _prompt(batch: List[Dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 def _to_text(resp) -> str:
-    # Works across several OpenAI SDK versions
     txt = getattr(resp, "output_text", None)
     if txt:
         return txt
-    # Fallback: try to extract concatenated text parts
     try:
         parts = []
         for item in getattr(resp, "output", []) or []:
@@ -56,12 +54,10 @@ def _try_load_json(s: str) -> dict:
     s = (s or "").strip()
     if not s:
         return {}
-    # Fast path
     try:
         return json.loads(s)
     except Exception:
         pass
-    # Extract the first {...} block if extra prose leaked
     try:
         start = s.find("{"); end = s.rfind("}")
         if start != -1 and end != -1 and end > start:
@@ -71,10 +67,10 @@ def _try_load_json(s: str) -> dict:
 
 @retry(wait=wait_exponential(min=1, max=6), stop=stop_after_attempt(2))
 def _call(client: OpenAI, model: str, prompt: str):
-    # No response_format here (SDK compatibility)
     resp = client.responses.create(
         model=model,
-        input=[{"role":"system","content":SYSTEM},{"role":"user","content":prompt}],
+        input=[{"role": "system", "content": SYSTEM},
+               {"role": "user", "content": prompt}],
     )
     return _try_load_json(_to_text(resp)) or {"issues": []}
 
@@ -92,7 +88,7 @@ def run_checks_llm(src_segments: List[str], tgt_segments: List[str], api_key: st
         client = OpenAI(api_key=stripped, timeout=30.0)
         issues = []
         batch = []
-        BATCH = 8  # keep payloads small
+        BATCH = 8
         for idx, (s, t) in enumerate(zip(src_segments, tgt_segments), start=1):
             batch.append({"segment": idx, "src": s, "tgt": t})
             if len(batch) == BATCH:
@@ -110,7 +106,6 @@ def run_checks_llm(src_segments: List[str], tgt_segments: List[str], api_key: st
     except APIConnectionError as e:
         raise ValueError("ChatGPT mode: Network connection error. Check internet/firewall.") from e
     except BadRequestError as e:
-        # Model not available or payload error
         raise ValueError(f"ChatGPT mode: Bad request to API (possibly model not enabled). {e}") from e
     except RetryError as e:
         last = e.last_attempt.exception() if hasattr(e, "last_attempt") else None
@@ -118,7 +113,7 @@ def run_checks_llm(src_segments: List[str], tgt_segments: List[str], api_key: st
     except Exception as e:
         raise ValueError(f"ChatGPT mode: Unexpected error: {e}") from e
 
-    # Normalize to match heuristic output shape
+    # Normalize
     norm = []
     for it in issues:
         seg = it.get("segment", 0)
