@@ -3,39 +3,81 @@
 <head>
   <meta charset="utf-8"/>
   <title>Translation QA — Two Uploads</title>
+  <!-- Fonts (clean, modern) -->
+ <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <!-- Theme -->
   <link rel="stylesheet" href="/static/styles.css"/>
 </head>
 <body>
-  <div class="container">
-    <h1>Translation QA — Two Uploads</h1>
-    <form id="form" method="post" enctype="multipart/form-data">
-      <div class="row">
-        <label>Original:
-          <input type="file" name="original" accept=".txt,.docx,.pdf" required />
-        </label>
-      </div>
-      <div class="row">
-        <label>Translation:
-          <input type="file" name="translation" accept=".txt,.docx,.pdf" required />
-        </label>
-      </div>
-      <div class="row">
-        <label><input type="radio" name="mode" value="python" checked /> Python modules (offline)</label>
-        <label style="margin-left:16px;"><input type="radio" name="mode" value="chatgpt" /> ChatGPT (API)</label>
-      </div>
-      <div class="row">
-        <button type="submit">Analyze</button>
-      </div>
-    </form>
-
-    <div id="progress" class="progress hidden">
-      <div class="bar" id="bar"></div>
-      <div class="label" id="plabel">Queued…</div>
+  <!-- Header / Nav -->
+  <header class="site-header">
+    <div class="container nav">
+      <a class="brand" href="/">
+  <img src="/static/img/profi-fachuebersetzungen-logo.webp" alt="Logo">
+      <nav>
+        <a href="/">Home</a>
+        <a href="#features">Features</a>
+        <a href="#upload">Upload</a>
+      </nav>
     </div>
+  </header>
 
-    <pre id="out"></pre>
-    <div id="download"></div>
-  </div>
+  <main class="container">
+    <!-- Hero -->
+    <section class="hero" id="features">
+      <div class="copy">
+        <h1>Professional Translation QA with Offline & AI Modes</h1>
+        <p>Compare Original & Translation, catch numbers/dates/names/orthography issues, and export a fixed DOCX.</p>
+        <a class="button" href="#upload">Analyze Now</a>
+      </div>
+      <div class="card">
+        <div class="card-inner">
+          <p class="muted">Tip: Large PDFs and DOCX files are supported. Choose Python (offline) or ChatGPT (API).</p>
+          <p class="muted">You’ll get a highlighted DOCX and an in-app editor to fix issues segment by segment.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Upload/Form card -->
+    <section id="upload" class="card" style="margin-top:24px">
+      <div class="card-inner">
+        <h2 style="margin-top:0">Upload documents</h2>
+        <form id="form" method="post" enctype="multipart/form-data">
+          <div class="row">
+            <label>Original:
+              <input type="file" name="original" accept=".txt,.docx,.pdf" required />
+            </label>
+          </div>
+          <div class="row">
+            <label>Translation:
+              <input type="file" name="translation" accept=".txt,.docx,.pdf" required />
+            </label>
+          </div>
+          <div class="row">
+            <label><input type="radio" name="mode" value="python" checked /> Python modules (offline)</label>
+            <label style="margin-left:16px;"><input type="radio" name="mode" value="chatgpt" /> ChatGPT (API)</label>
+          </div>
+          <div class="row">
+            <button type="submit">Analyze</button>
+          </div>
+        </form>
+
+        <!-- Progress -->
+        <div id="progress" class="progress hidden" style="margin-top:12px">
+          <div class="bar" id="bar"></div>
+          <div class="label" id="plabel">Queued…</div>
+        </div>
+
+        <!-- Output -->
+        <pre id="out" style="margin-top:12px"></pre>
+        <div id="download"></div>
+      </div>
+    </section>
+  </main>
+
   <script src="/static/app.js"></script>
 </body>
 </html>

@@ -1,25 +1,240 @@
-body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background:#0b1020; color:#e9edf6; }
-.container { max-width: 70%; margin: 32px auto; background:#11162a; padding:24px; border-radius:16px; box-shadow:0 8px 24px rgba(0,0,0,.3); }
-h1 { margin-top:0; }
-.row { margin: 12px 0; }
-input[type=file] { display:block; margin-top:6px; }
-label { display:inline-block; }
-button, .button { background:#6c8dff; border:0; padding:10px 16px; border-radius:10px; color:#071029; font-weight:700; cursor:pointer; text-decoration:none; }
-button:hover, .button:hover { background:#86a2ff; }
-#out { white-space: pre-wrap; background:#0c1326; padding:12px; border-radius:12px; min-height: 140px; }
-#download { margin-top:12px; }
-.issue { padding:8px 0; }
-.badge { display:inline-block; padding:2px 8px; border-radius:999px; font-size:12px; margin-right:8px; }
-.badge.high { background:#ff6b6b; color:#250000; }
-.badge.medium { background:#ffd166; color:#2b1d00; }
-.badge.low { background:#74c69d; color:#002012; }
-.type { display:inline-block; opacity:.9; margin-right:12px; }
-.seg { display:inline-block; color:#a5b4fc; }
-pre.detail { background:#0c1326; padding:8px; border-radius:8px; overflow-x:auto; }
-.hint { opacity:.75; margin-top:12px; }
+/* ============================================================
+   Translation QA — Light Theme (FULL + Responsive + Overrides)
+   ============================================================ */
 
-/* Progress bar */
-.progress { margin-top:14px; background:#0c1326; border-radius:10px; padding:8px; }
-.progress .bar { height:10px; width:0%; background:#6c8dff; border-radius:8px; transition: width .25s ease; }
-.progress .label { font-size:12px; opacity:.8; margin-top:6px; }
-.hidden { display:none; }
+/* ---------- Design Tokens ---------- */
+:root{
+  --bg: #ffffff;            /* page background */
+  --panel: #f6f7fb;         /* cards/panels */
+  --panel-2: #ffffff;       /* inner panels */
+  --text: #111111;          /* primary text */
+  --text-dim: #333333;      /* secondary text */
+  --line: #e6e8ef;          /* borders */
+  --accent: #111111;        /* accent */
+  --accent-2: #000000;      /* accent hover */
+  --ok: #2e7d32;            /* green */
+  --warn: #b26a00;          /* amber */
+  --bad: #c62828;           /* red */
+  --shadow: rgba(0,0,0,.10);
+}
+
+/* ---------- Base ---------- */
+*{ box-sizing: border-box }
+html,body{ height:100% }
+body{
+  margin:0;
+  background:var(--bg) !important;
+  color:var(--text) !important;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Kill any legacy dark body gradients/backgrounds */
+body, html, main { background: var(--bg) !important; }
+
+/* ---------- Containers & Cards ---------- */
+.container{ max-width:1100px; margin:32px auto; padding:0 20px }
+.card{
+  background:var(--panel) !important;
+  border-radius:16px;
+  border:1px solid var(--line) !important;
+  box-shadow:0 10px 28px var(--shadow) !important;
+}
+.card-inner{ padding:24px }
+
+/* ---------- Header / Navbar ---------- */
+.site-header{
+  background:#fff !important;
+  position:sticky; top:0; z-index:10;
+  border-bottom:1px solid var(--line) !important;
+}
+.nav{
+  display:flex; align-items:center; justify-content:space-between;
+  gap:16px; padding:14px 0;
+}
+.brand{
+  display:flex; align-items:center; gap:12px; text-decoration:none; color:var(--text) !important;
+  font-weight:700; letter-spacing:.2px;
+}
+.brand img{ height:32px; width:auto }
+.nav a{ color:var(--text) !important; text-decoration:none; opacity:.8; margin-left:18px; white-space:nowrap }
+.nav a:hover{ opacity:1 }
+
+/* ---------- Hero ---------- */
+.hero{
+  display:grid; grid-template-columns: 1.2fr .8fr; gap:24px; align-items:center;
+  margin-top:16px;
+}
+.hero .copy{
+  background:var(--panel) !important;
+  border-radius:16px; border:1px solid var(--line) !important; padding:28px;
+}
+.hero h1{ margin:0 0 10px 0; font-size:2rem; line-height:1.2; color:var(--text) }
+.hero p{ color:var(--text-dim); margin:0 0 14px }
+
+/* ---------- Buttons (white pill) ---------- */
+button,.button{
+  background:#ffffff !important;
+  color:#111111 !important;
+  border:1.5px solid #111111 !important;
+  border-radius:18px 64px 18px 18px; /* TL, TR, BR, BL */
+  padding:14px 24px;
+  font-weight:500;
+  letter-spacing:0.28em;
+  text-decoration:none;
+  display:inline-flex; align-items:center; justify-content:center; gap:8px;
+  cursor:pointer;
+  box-shadow:0 10px 24px rgba(0,0,0,.06) !important;
+  transition:transform .05s ease, background .15s ease, color .15s ease, box-shadow .15s ease;
+}
+button:hover,.button:hover{ background:#111111 !important; color:#ffffff !important; box-shadow:0 12px 28px rgba(0,0,0,.10) !important; }
+button:active,.button:active{ transform: translateY(1px) }
+
+/* ---------- Form Inputs ---------- */
+input[type=file],input[type=text],input[type=email],textarea,select{
+  width:100%;
+  background:#ffffff !important;
+  color:var(--text) !important;
+  border:1px solid var(--line) !important;
+  border-radius:10px;
+  padding:10px 12px;
+}
+label{ display:block; margin:8px 0 4px; color:var(--text) }
+
+/* ---------- Output / Report ---------- */
+#out{
+  white-space:pre-wrap;
+  background:var(--panel-2) !important;
+  color:var(--text) !important;
+  padding:12px;
+  border-radius:12px;
+  border:1px solid var(--line) !important;
+  min-height:140px;
+}
+#download p{ margin:.5rem 0 }
+
+/* ---------- Progress Bar ---------- */
+.progress{
+  margin-top:14px;
+  background:var(--panel-2) !important;
+  border-radius:10px;
+  padding:8px;
+  border:1px solid var(--line) !important;
+}
+.progress .bar{
+  height:10px;
+  width:0%;
+  background:#111111 !important;
+  border-radius:8px;
+  transition:width .25s ease;
+}
+.progress .label{ font-size:12px; opacity:.8; margin-top:6px; color:var(--text) }
+
+/* ---------- Editor / Issues (force override legacy dark) ---------- */
+.editor{
+  background:var(--panel) !important;
+  color:var(--text) !important;
+  padding:12px;
+  border-radius:12px;
+  max-height:72vh;
+  overflow:auto;
+  border:1px solid var(--line) !important;
+  box-shadow:0 8px 24px var(--shadow) !important;
+}
+.sidebar{
+  background:var(--panel) !important;
+  color:var(--text) !important;
+  padding:12px;
+  border-radius:12px;
+  max-height:72vh;
+  overflow:auto;
+  border:1px solid var(--line) !important;
+  box-shadow:0 8px 24px var(--shadow) !important;
+}
+
+/* Segment container (kill #0f1833 / #0c1326 leftovers) */
+.seg{
+  border:1px solid var(--line) !important;
+  margin-bottom:10px;
+  padding:10px;
+  border-radius:10px;
+  background:#fafbfe !important;   /* light row background */
+  color:var(--text) !important;
+}
+.seg-num{ font-size:12px; opacity:.7; margin-bottom:6px; color:var(--text-dim) }
+.body{ white-space:pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color:var(--text) }
+
+/* Issue list */
+.issue-item{
+  font-size:13px;
+  padding:6px;
+  border-radius:8px;
+  background:#fafbfe !important;
+  margin-bottom:8px;
+  cursor:pointer;
+  border:1px solid var(--line) !important;
+  color:var(--text) !important;
+}
+.issue-item.high{ border-left:4px solid var(--bad) }
+.issue-item.medium{ border-left:4px solid var(--warn) }
+.issue-item.low{ border-left:4px solid var(--ok) }
+
+/* Segment severity frames */
+.seg.issue-high{ box-shadow:0 0 0 2px rgba(198,40,40,.25) inset !important }
+.seg.issue-medium{ box-shadow:0 0 0 2px rgba(178,106,0,.25) inset !important }
+.seg.issue-low{ box-shadow:0 0 0 2px rgba(46,125,50,.25) inset !important }
+
+/* Toolbar sticky area should be light */
+.sticky{ background: var(--bg) !important; border-bottom: 1px solid var(--line) !important; }
+
+/* ---------- Utilities ---------- */
+.hidden{ display:none }
+.muted{ opacity:.75 }
+
+/* ============================================================
+   Responsiveness
+   ============================================================ */
+
+/* Laptops / small desktops */
+@media (max-width: 1100px){
+  .container{ padding:0 16px }
+  .hero{ grid-template-columns: 1fr; }
+  .hero .copy{ order: 1 }
+}
+
+/* Tablets */
+@media (max-width: 900px){
+  .nav{ flex-wrap:wrap; justify-content:space-between }
+  .nav a{ margin-left:12px }
+  .brand img{ height:28px }
+  .hero h1{ font-size:1.8rem }
+  .editor, .sidebar{ max-height: unset } /* let them grow on smaller screens */
+}
+
+/* Phones (stack editor + issues) */
+@media (max-width: 700px){
+  .container{ margin:20px auto }
+  .hero{ gap:16px }
+  .card-inner{ padding:18px }
+  .progress{ padding:10px }
+  .layout{ display:block }    /* make editor + issues stack (template uses .layout grid) */
+  .sidebar{ margin-top:16px }
+  button,.button{ width:100% } /* full-width buttons for easier tapping */
+}
+
+/* Small phones */
+@media (max-width: 520px){
+  .brand span{ display:none } /* keep only logo if space is tight */
+  .hero h1{ font-size:1.55rem }
+  .seg{ padding:10px }
+  .body{ font-size:14px; line-height:1.45 }
+  .nav a{ margin-left:10px; font-size:14px }
+}
+
+/* Ultra-small devices */
+@media (max-width: 380px){
+  .nav{ gap:8px }
+  .nav a{ margin-left:8px; font-size:13px }
+  button,.button{ letter-spacing:0.18em; padding:12px 16px }
+}
